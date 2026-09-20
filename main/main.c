@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -37,8 +36,6 @@
 #define LEDC_MODE LEDC_LOW_SPEED_MODE
 #define LEDC_CHANNEL LEDC_CHANNEL_0
 #define LEDC_DUTY_RES LEDC_TIMER_14_BIT
-
-#define POT_CHANNEL ADC_CHANNEL_4
 
 
 #define BUZZER_PIN 4
@@ -255,11 +252,6 @@ void app_main(void)
         ESP_ERROR_CHECK(pcnt_unit_get_count(pcnt_unit, &count));
 
         int     delta  = count - last_count;
-
-        float encoder_angle = (count % STEPS_PER_REV) * (360.0f / STEPS_PER_REV);
-        if (encoder_angle < 0.0f) {
-            encoder_angle += 360.0f;
-        }
 
         int steps = slow_mode ? count / 2 : count;
         float servo_angle = (steps % STEPS_PER_REV) * (360.0f / STEPS_PER_REV);
