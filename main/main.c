@@ -48,6 +48,8 @@ static const char *TAG = "ENC";
 
 static pcnt_unit_handle_t pcnt_unit = NULL;
 
+bool slow_mode = false;
+
 
 static void encoder_init(void)
 {
@@ -194,23 +196,25 @@ void app_main(void)
             rpm = ((float)delta / STEPS_PER_REV) * (60.0f * 1000000.0f / (float)dt_us);
         }
 
-
-        float angle = (count % STEPS_PER_REV) * (360.0f / STEPS_PER_REV);
-        if (angle < 0.0f) {
-            angle += 360.0f;
+        float encoder_angle = (count % STEPS_PER_REV) * (360.0f / STEPS_PER_REV);
+        if (encoder_angle < 0.0f) {
+            encoder_angle += 360.0f;
         }
+
+        int steps = slow_mode ? count / 2 : count;
+        float servo_angle = (steps % STEPS_PER_REV) * (360.0f / STEPS_PER_REV);
 
         const char *dir = (delta > 0) ? "CW " : (delta < 0) ? "CCW" : "-  ";
 
 
         if (delta != 0) {
-            servo_set_angle(angle);
+            servo_set_angle(servo_angle);
 
             ESP_LOGI(TAG, "%s кроки=%6d  клац=%5d  кут=%6.1f  RPM=%7.1f",
                      dir,
                      count,
                      count / PULSES_PER_DETENT,
-                     angle,
+                     encoder_angle,
                      rpm);
         }
 
@@ -219,9 +223,9 @@ void app_main(void)
 
         int sw = gpio_get_level(ENC_SW);
         if (sw == 0 && sw_prev == 1) {
-            ESP_ERROR_CHECK(pcnt_unit_clear_count(pcnt_unit));
-            last_count = 0;
-            ESP_LOGW(TAG, "нуль встановлено");
+            slow_mode = !slow_mode;
+            char *slow_mode_status = slow_mode ? "увімкнено" : "вимкнено";
+            ESP_LOGI(TAG, "Повільний режим %s", slow_mode_status);
         }
         sw_prev = sw;
 
