@@ -44,9 +44,21 @@
 #define POT_CHANNEL ADC_CHANNEL_4
 
 
+#define BUZZER_PIN 4
+#define BUZZER_LEDC_CHANNEL LEDC_CHANNEL_1
+#define BUZZER_LEDC_TIMER LEDC_TIMER_1
+#define BUZZER_LEDC_RESOLUTION LEDC_TIMER_10_BIT
+#define BUZZER_LEDC_MODE LEDC_LOW_SPEED_MODE
+#define BUZZER_DURATION 500000
+#define BUZZER_FREQUENCY 440
+
+
+
 static const char *TAG = "ENC";
 
 static pcnt_unit_handle_t pcnt_unit = NULL;
+
+int64_t sound_on_at = 0;
 
 bool slow_mode = false;
 
@@ -140,6 +152,42 @@ static void servo_init(void)
     ESP_ERROR_CHECK(ledc_channel_config(&c));
 }
 
+void buzzer_init() {
+    ledc_timer_config_t timer_config = {
+        .clk_cfg = LEDC_AUTO_CLK,
+        .timer_num = BUZZER_LEDC_TIMER,
+        .duty_resolution = BUZZER_LEDC_RESOLUTION,
+        .freq_hz = 440,
+        .speed_mode = BUZZER_LEDC_MODE
+    };
+
+    ESP_ERROR_CHECK(ledc_timer_config(&timer_config));
+
+
+    ledc_channel_config_t channel_config = {
+        .speed_mode = BUZZER_LEDC_MODE,
+        .channel = BUZZER_LEDC_CHANNEL,
+        .timer_sel = BUZZER_LEDC_TIMER,
+        .intr_type = LEDC_INTR_DISABLE,
+        .gpio_num = BUZZER_PIN,
+        .duty = 0,
+        .hpoint = 0
+    };
+
+    ESP_ERROR_CHECK(ledc_channel_config(&channel_config));
+}
+
+void set_sound_frequency(uint32_t frequency) {
+    if(frequency == 0) {
+        ESP_ERROR_CHECK(ledc_set_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL, 0));
+    } else {
+        ledc_set_freq(BUZZER_LEDC_MODE, BUZZER_LEDC_TIMER, frequency);
+        ESP_ERROR_CHECK(ledc_set_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL, 512));
+    }
+ 
+    ESP_ERROR_CHECK(ledc_update_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL));
+}
+
 void servo_set_us(uint32_t us) {
     if(us < SERVO_MIN_US) {
         us = SERVO_MIN_US;
@@ -158,18 +206,35 @@ void servo_set_us(uint32_t us) {
 }
 
 void servo_set_angle(float angle) {
+    static float prev_angle = 0;
+
     if(angle > SERVO_MAX_ANGLE) {
+        if(prev_angle <= SERVO_MAX_ANGLE) {
+            set_sound_frequency(BUZZER_FREQUENCY);
+            sound_on_at = esp_timer_get_time();
+
+        }
+
         angle = SERVO_MAX_ANGLE;
     }
 
     if(angle < SERVO_MIN_ANGLE) {
+        if(prev_angle >= SERVO_MIN_ANGLE) {
+            set_sound_frequency(BUZZER_FREQUENCY);
+            sound_on_at = esp_timer_get_time();
+        }
+
         angle = SERVO_MIN_ANGLE;
     }
+
+    prev_angle = angle;
 
     uint32_t us = SERVO_MIN_US + (uint32_t)((angle / 180.0f) * (SERVO_MAX_US - SERVO_MIN_US));
     ESP_LOGI("check", " us = %d", us);
 
     servo_set_us(us);
+
+    ESP_LOGI(TAG, "Кут серво %f", angle);
 
 }
 
@@ -177,12 +242,19 @@ void app_main(void)
 {
     encoder_init();
     servo_init();
+    buzzer_init();
 
     int     last_count = 0;
     int64_t last_us    = esp_timer_get_time();
     int     sw_prev    = 1;
 
     while (1) {
+
+        if(sound_on_at != 0 && (esp_timer_get_time() - sound_on_at) > BUZZER_DURATION) {
+            set_sound_frequency(0);
+            sound_on_at = 0;
+        }
+
         int count = 0;
         ESP_ERROR_CHECK(pcnt_unit_get_count(pcnt_unit, &count));
 
