@@ -1,6 +1,3 @@
-//Ussing PCNT
-
-
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -54,7 +51,7 @@
 
 
 
-static const char *TAG = "ENC";
+static const char *TAG = "Main App";
 
 static pcnt_unit_handle_t pcnt_unit = NULL;
 
@@ -199,7 +196,7 @@ void servo_set_us(uint32_t us) {
 
     uint32_t duty = (uint32_t)((uint32_t)(us * SERVO_MAX_DUTY) / SERVO_PERIOD_US);
 
-    ESP_LOGI("Main App: ", "Setting Servo Duty %d", duty);
+    ESP_LOGI(TAG, "Setting Servo Duty %d", duty);
 
     ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, duty));
     ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
@@ -245,7 +242,6 @@ void app_main(void)
     buzzer_init();
 
     int     last_count = 0;
-    int64_t last_us    = esp_timer_get_time();
     int     sw_prev    = 1;
 
     while (1) {
@@ -258,15 +254,7 @@ void app_main(void)
         int count = 0;
         ESP_ERROR_CHECK(pcnt_unit_get_count(pcnt_unit, &count));
 
-        int64_t now_us = esp_timer_get_time();
         int     delta  = count - last_count;
-        int64_t dt_us  = now_us - last_us;
-
-
-        float rpm = 0.0f;
-        if (dt_us > 0) {
-            rpm = ((float)delta / STEPS_PER_REV) * (60.0f * 1000000.0f / (float)dt_us);
-        }
 
         float encoder_angle = (count % STEPS_PER_REV) * (360.0f / STEPS_PER_REV);
         if (encoder_angle < 0.0f) {
@@ -276,22 +264,11 @@ void app_main(void)
         int steps = slow_mode ? count / 2 : count;
         float servo_angle = (steps % STEPS_PER_REV) * (360.0f / STEPS_PER_REV);
 
-        const char *dir = (delta > 0) ? "CW " : (delta < 0) ? "CCW" : "-  ";
-
-
         if (delta != 0) {
             servo_set_angle(servo_angle);
-
-            ESP_LOGI(TAG, "%s кроки=%6d  клац=%5d  кут=%6.1f  RPM=%7.1f",
-                     dir,
-                     count,
-                     count / PULSES_PER_DETENT,
-                     encoder_angle,
-                     rpm);
         }
 
         last_count = count;
-        last_us    = now_us;
 
         int sw = gpio_get_level(ENC_SW);
         if (sw == 0 && sw_prev == 1) {
